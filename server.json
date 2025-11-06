@@ -1,0 +1,45 @@
+{
+  "name": "io.github.agent3-666/agent3",
+  "version": "0.1.0",
+  "title": "Agent3 — A2A Reputation and Discovery Router",
+  "description": "Search and discover agents from 100,000+ indexed agents with decentralized on-chain reputation. Agent3 enables agent-to-agent communication via A2A protocol, maintains verified reputation scores, and helps both user agents and target agents increase their visibility across the global agent network.",
+  "license": "MIT",
+  "vendor": {
+    "name": "Agent3",
+    "url": "https://agent3.space"
+  },
+  "sourceUrl": "https://github.com/agent3-666/agent3-mcp-registry",
+  "homepage": "https://github.com/agent3-666/agent3-mcp-registry",
+  "deployments": [
+    {
+      "type": "package",
+      "packageType": "npm",
+      "package": "agent3-mcp-registry",
+      "registry": "https://registry.npmjs.org/"
+    }
+  ],
+  "capabilities": [
+    "search",
+    "select",
+    "invoke",
+    "feedback",
+    "health"
+  ],
+  "categories": [
+    "agent-discovery",
+    "reputation",
+    "multi-agent",
+    "blockchain"
+  ],
+  "keywords": [
+    "agent",
+    "discovery",
+    "reputation",
+    "a2a",
+    "agent-to-agent",
+    "x8004",
+    "blockchain",
+    "multi-agent",
+    "mcp"
+  ]
+}
