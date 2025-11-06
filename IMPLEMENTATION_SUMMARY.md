@@ -11,27 +11,29 @@ This repository contains the MCP (Model Context Protocol) server implementation 
 1. **MCP Server (src/index.ts)**
    - Built using `@modelcontextprotocol/sdk`
    - Stdio transport for communication with Claude Desktop
-   - RESTful API client for Agent3 backend
+   - JSON-RPC client for Agent3 remote MCP server
 
-2. **API Integration**
-   - Base URL: `https://api.agent3.space`
-   - Endpoints for search, selection, invocation, feedback, and health checks
+2. **Remote MCP Integration**
+   - Remote MCP URL: `https://hub.agent3.space/api/mcp`
+   - JSON-RPC 2.0 protocol for tool invocation
+   - Proxy pattern: forwards requests to remote MCP server
    - Error handling and response formatting
 
 3. **Tool Definitions**
    - 5 primary tools mapping to Agent3 capabilities
+   - Local tool names (agent3_*) map to remote tools (agents.*)
    - Comprehensive input validation schemas
    - Structured JSON responses
 
 ## Implemented Tools
 
-### 1. agent3_search
+### 1. agent3_search (â†’ agents.search)
 **Purpose**: Search for agents based on natural language queries
 
 **Implementation**:
 - Accepts query string, limit, and optional filters
-- Constructs URL search parameters
-- Calls `/api/v1/agents/search` endpoint
+- Maps to remote tool `agents.search`
+- Forwards request via JSON-RPC to remote MCP server
 - Returns ranked list of matching agents
 
 **Key Features**:
@@ -40,24 +42,26 @@ This repository contains the MCP (Model Context Protocol) server implementation 
 - Verification status filtering
 - Result limit (max 50)
 
-### 2. agent3_select
+### 2. agent3_select (â†’ agents.select)
 **Purpose**: Retrieve detailed agent profile information
 
 **Implementation**:
 - Takes agent ID as input
-- Calls `/api/v1/agents/{agentId}` endpoint
+- Maps to remote tool `agents.select`
+- Forwards request via JSON-RPC to remote MCP server
 - Returns comprehensive agent details including:
   - Capabilities and specifications
   - Reputation metrics
   - Recent evaluations
   - Connection endpoints
 
-### 3. agent3_invoke
+### 3. agent3_invoke (â†’ agents.invoke)
 **Purpose**: Get Agent Card for A2A protocol connection
 
 **Implementation**:
 - Takes agent ID and optional context
-- POST to `/api/v1/agents/{agentId}/card`
+- Maps to remote tool `agents.invoke`
+- Forwards request via JSON-RPC to remote MCP server
 - Returns structured Agent Card with:
   - Connection endpoints
   - Authentication methods
@@ -68,12 +72,13 @@ This repository contains the MCP (Model Context Protocol) server implementation 
 - Task description
 - User agent ID for reputation linkage
 
-### 4. agent3_feedback
+### 4. agent3_feedback (â†’ agents.feedback)
 **Purpose**: Submit post-interaction evaluation
 
 **Implementation**:
 - Accepts rating (1-5), feedback text, and metadata
-- POST to `/api/v1/feedback` endpoint
+- Maps to remote tool `agents.feedback`
+- Forwards request via JSON-RPC to remote MCP server
 - Stores evaluation on-chain via X8004 protocol
 - Updates reputation scores
 
@@ -82,11 +87,12 @@ This repository contains the MCP (Model Context Protocol) server implementation 
 - Response time metrics
 - Token usage statistics
 
-### 5. agent3_health
+### 5. agent3_health (â†’ agents.health)
 **Purpose**: Service health monitoring
 
 **Implementation**:
-- GET `/api/v1/health` endpoint
+- Maps to remote tool `agents.health`
+- Forwards request via JSON-RPC to remote MCP server
 - Returns service status and statistics
 - No parameters required
 
@@ -109,25 +115,40 @@ This repository contains the MCP (Model Context Protocol) server implementation 
 
 ## Data Flow
 
+The system uses a **proxy/bridge pattern** where the local MCP server forwards requests to the remote Agent3 MCP server:
+
 1. **Search Flow**:
    ```
-   User Query ’ agent3_search ’ API Search ’ Ranked Results ’ Claude
+   Claude -> agent3_search -> JSON-RPC (agents.search) -> Remote MCP Server -> Results -> Claude
    ```
 
 2. **Selection Flow**:
    ```
-   Agent ID ’ agent3_select ’ API Profile ’ Full Details ’ Claude
+   Claude -> agent3_select -> JSON-RPC (agents.select) -> Remote MCP Server -> Details -> Claude
    ```
 
 3. **Invocation Flow**:
    ```
-   Agent ID + Context ’ agent3_invoke ’ API Card ’ Agent Card ’ Claude
+   Claude -> agent3_invoke -> JSON-RPC (agents.invoke) -> Remote MCP Server -> Agent Card -> Claude
    ```
 
 4. **Feedback Flow**:
    ```
-   Rating + Feedback ’ agent3_feedback ’ API Store ’ On-chain ’ Confirmation
+   Claude -> agent3_feedback -> JSON-RPC (agents.feedback) -> Remote MCP Server -> On-chain Storage -> Confirmation -> Claude
    ```
+
+**JSON-RPC Request Format**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "agents.search",
+    "arguments": { "query": "blockchain", "limit": 5 }
+  }
+}
+```
 
 ## Error Handling
 

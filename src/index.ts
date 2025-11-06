@@ -8,7 +8,7 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 
-const API_BASE = "https://api.agent3.space";
+const MCP_REMOTE_URL = "https://hub.agent3.space/api/mcp";
 
 // Define the tools available in the MCP server
 const TOOLS: Tool[] = [
@@ -178,37 +178,52 @@ const server = new Server(
   }
 );
 
-// Helper function to make API calls
-async function callAgent3API(
-  endpoint: string,
-  method: string = "GET",
-  body?: any
+// Helper function to call remote MCP server via JSON-RPC
+let requestIdCounter = 1;
+
+async function callRemoteMCPTool(
+  toolName: string,
+  args: any
 ): Promise<any> {
-  const url = `${API_BASE}${endpoint}`;
-  const options: RequestInit = {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent": "agent3-mcp/0.1.0",
+  const jsonRpcRequest = {
+    jsonrpc: "2.0",
+    id: requestIdCounter++,
+    method: "tools/call",
+    params: {
+      name: toolName,
+      arguments: args,
     },
   };
 
-  if (body && method !== "GET") {
-    options.body = JSON.stringify(body);
-  }
-
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(MCP_REMOTE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "agent3-mcp-client/0.1.0",
+      },
+      body: JSON.stringify(jsonRpcRequest),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Agent3 API error (${response.status}): ${errorText}`);
+      throw new Error(`Remote MCP server error (${response.status}): ${errorText}`);
     }
 
-    return await response.json();
+    const jsonRpcResponse = await response.json();
+
+    // Check for JSON-RPC error
+    if (jsonRpcResponse.error) {
+      throw new Error(
+        `MCP tool error: ${jsonRpcResponse.error.message || JSON.stringify(jsonRpcResponse.error)}`
+      );
+    }
+
+    // Return the result
+    return jsonRpcResponse.result;
   } catch (error) {
     if (error instanceof Error) {
-      throw new Error(`Failed to call Agent3 API: ${error.message}`);
+      throw new Error(`Failed to call remote MCP server: ${error.message}`);
     }
     throw error;
   }
@@ -219,153 +234,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return { tools: TOOLS };
 });
 
+// Tool name mapping: local name -> remote MCP tool name
+const TOOL_NAME_MAP: Record<string, string> = {
+  agent3_search: "agents.search",
+  agent3_select: "agents.select",
+  agent3_invoke: "agents.invoke",
+  agent3_feedback: "agents.feedback",
+  agent3_health: "agents.health",
+};
+
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
-    switch (name) {
-      case "agent3_search": {
-        const { query, limit = 10, filters = {} } = args as {
-          query: string;
-          limit?: number;
-          filters?: {
-            minReputation?: number;
-            protocols?: string[];
-            verified?: boolean;
-          };
-        };
-
-        const searchParams = new URLSearchParams({
-          q: query,
-          limit: Math.min(limit, 50).toString(),
-        });
-
-        if (filters.minReputation) {
-          searchParams.append("minReputation", filters.minReputation.toString());
-        }
-        if (filters.protocols && filters.protocols.length > 0) {
-          searchParams.append("protocols", filters.protocols.join(","));
-        }
-        if (filters.verified !== undefined) {
-          searchParams.append("verified", filters.verified.toString());
-        }
-
-        const result = await callAgent3API(`/api/v1/agents/search?${searchParams}`);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "agent3_select": {
-        const { agentId } = args as { agentId: string };
-
-        if (!agentId) {
-          throw new Error("agentId is required");
-        }
-
-        const result = await callAgent3API(`/api/v1/agents/${agentId}`);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "agent3_invoke": {
-        const { agentId, context } = args as {
-          agentId: string;
-          context?: {
-            task?: string;
-            userAgentId?: string;
-          };
-        };
-
-        if (!agentId) {
-          throw new Error("agentId is required");
-        }
-
-        const result = await callAgent3API(
-          `/api/v1/agents/${agentId}/card`,
-          "POST",
-          { context }
-        );
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "agent3_feedback": {
-        const { agentId, rating, feedback, metadata, userAgentId } = args as {
-          agentId: string;
-          rating: number;
-          feedback: string;
-          metadata?: {
-            taskCompleted?: boolean;
-            responseTime?: number;
-            tokensUsed?: number;
-          };
-          userAgentId?: string;
-        };
-
-        if (!agentId || !rating || !feedback) {
-          throw new Error("agentId, rating, and feedback are required");
-        }
-
-        if (rating < 1 || rating > 5) {
-          throw new Error("rating must be between 1 and 5");
-        }
-
-        const result = await callAgent3API(`/api/v1/feedback`, "POST", {
-          agentId,
-          rating,
-          feedback,
-          metadata,
-          userAgentId,
-        });
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "agent3_health": {
-        const result = await callAgent3API(`/api/v1/health`);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      }
-
-      default:
-        throw new Error(`Unknown tool: ${name}`);
+    // Map local tool name to remote tool name
+    const remoteTool = TOOL_NAME_MAP[name];
+    if (!remoteTool) {
+      throw new Error(`Unknown tool: ${name}`);
     }
+
+    // Call remote MCP server
+    const result = await callRemoteMCPTool(remoteTool, args || {});
+
+    // Return the result from remote server
+    // The remote server should return MCP-compatible result
+    if (result && result.content) {
+      return result;
+    }
+
+    // If result is not in MCP format, wrap it
+    return {
+      content: [
+        {
+          type: "text",
+          text: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+        },
+      ],
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
